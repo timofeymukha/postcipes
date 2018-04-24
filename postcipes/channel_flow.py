@@ -77,3 +77,12 @@ class ChannelFlow(Postcipe):
         self.reTheta = self.theta*self.uC/self.nu
         self.reDelta99 = self.delta99*self.uC/self.nu
         self.reDeltaStar = self.deltaStar*self.uC/self.nu
+
+    def utau_relative_error(self, bench, procent=True, abs=False):
+        error = (self.uTau - bench)/bench
+        if procent:
+            error *= 100
+        if abs:
+            error = np.abs(error)
+
+        return error
