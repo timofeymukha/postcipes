@@ -6,7 +6,7 @@
 from .postcipe import Postcipe
 from .bfs import BackwardFacingStep
 from .channel_flow import ChannelFlow
+from .readers import SwakPatchExpression
 
-
-__all__ = ["BackwardFacingStep", "ChannelFlow", "Postcipe"]
+__all__ = ["BackwardFacingStep", "ChannelFlow", "Postcipe", "SwakPatchExpression"]
 
