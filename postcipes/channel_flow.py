@@ -17,7 +17,7 @@ __all__ = ["ChannelFlow"]
 
 class ChannelFlow(Postcipe):
 
-    def __init__(self, path, nu, time, wallModel=False):
+    def __init__(self, path, nu, time, wallModel=False, kBudget=False):
         Postcipe.__init__(self)
         self.case = path
         self.readPath = join(self.case, "postProcessing", "collapsedFields",
@@ -26,6 +26,7 @@ class ChannelFlow(Postcipe):
         self.time = time
 
         self.y = np.genfromtxt(join(self.readPath, "UMean_X.xy"))[:, 0]
+        self.yf = self.cell_faces()
         self.u = np.genfromtxt(join(self.readPath, "UMean_X.xy"))[:, 1]
         self.uu = np.genfromtxt(join(self.readPath, "UPrime2Mean_XX.xy"))[:, 1]
         self.vv = np.genfromtxt(join(self.readPath, "UPrime2Mean_YY.xy"))[:, 1]
@@ -33,6 +34,16 @@ class ChannelFlow(Postcipe):
         self.uv = np.genfromtxt(join(self.readPath, "UPrime2Mean_XY.xy"))[:, 1]
         self.k = 0.5*(self.uu + self.vv + self.ww)
         self.nut = np.genfromtxt(join(self.readPath, "nutMean.xy"))[:, 1]
+
+        if kBudget:
+            self.kProduction = np.genfromtxt(join(self.readPath, "kProduction.xy"))[:, 1]
+            self.kConvection = np.genfromtxt(join(self.readPath, "kConvection.xy"))[:, 1]
+            self.kViscousDiffusion = np.genfromtxt(join(self.readPath, "kViscousDiffusion.xy"))[:, 1]
+            self.kPressureVelocityTransport = np.genfromtxt(join(self.readPath, "kPressureVelocityTransportMean.xy"))[:, 1]
+            self.kTurbulentTransport = np.genfromtxt(join(self.readPath, "kTurbulentTransportMean.xy"))[:, 1]
+            self.kDissipation = np.genfromtxt(join(self.readPath, "kDissipationMean.xy"))[:, 1]
+            self.kSgsDiffusion = np.genfromtxt(join(self.readPath, "kSgsDiffusion.xy"))[:, 1]
+
 
         self.tau = 0
         if wallModel:
@@ -78,11 +89,42 @@ class ChannelFlow(Postcipe):
         self.reDelta99 = self.delta99*self.uC/self.nu
         self.reDeltaStar = self.deltaStar*self.uC/self.nu
 
+    def cell_faces(self):
+        faces = np.zeros(self.y.size - 1)
+        faces[0] = self.y[0]
+        faces[-1] = self.y[-1]
+
+        for i in range(faces.size):
+            if i == 0 or i == faces.size -1:
+                continue
+            else:
+                faces[i] = faces[i - 1] + (self.y[i] - faces[i - 1])*2
+
+        return faces
+
     def utau_relative_error(self, bench, procent=True, abs=False):
         error = (self.uTau - bench)/bench
         if procent:
             error *= 100
         if abs:
             error = np.abs(error)
+
+        return error
+
+    def u_relative_error(self, benchY, benchU, bound=0.2, procent=True):
+        from scipy.interpolate import interp1d
+        bound = bound*self.delta
+        benchInterp = interp1d(np.append(benchY, [1]), np.append(benchU, benchU[-1]))
+        wmlesInterp = interp1d(self.y, self.u)
+        lowerIndY = np.argmin(np.abs(bound - self.y))
+        upperIndY = int(self.y.size/2)
+
+        y = np.linspace(bound, 1, 200)
+
+        #error = np.max(np.abs(self.u[lowerIndY:upperIndY] - benchInterp(self.y[lowerIndY:upperIndY])))/np.max(benchU)
+        error = np.max(np.abs(wmlesInterp(y) - benchInterp(y)))/np.max(benchU)
+
+        if procent:
+            error *= 100
 
         return error
