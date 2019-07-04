@@ -40,6 +40,7 @@ class ACS(Postcipe):
         ind = np.where(self.alpha05[:, 0] < 4)
         self.crest = np.max(self.alpha05[ind, 1])
         self.trough = np.min(self.alpha05[ind, 1])
+        self.y0 = 0.5*(self.crest + self.trough)
         self.amplitude = self.crest - self.trough
 
         indCrest = np.argmax(self.alpha05[ind, 1])
@@ -52,3 +53,5 @@ class ACS(Postcipe):
         self.Ca = self.dp/(0.5*self.rhoWater*self.u0**2)
         self.Fn = self.u0/np.sqrt(g*self.lambdaReal)
         self.We = self.rhoWater*self.u0**2*self.lambdaReal/self.sigma
+
+        self.case['k'] = 0.5*np.sum(self.case['UPrime2Mean'][:, :2], axis=1)
