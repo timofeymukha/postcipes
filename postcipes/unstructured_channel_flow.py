@@ -7,7 +7,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from .postcipe import Postcipe
-import turbulucid as tbl
 import numpy as np
 from os.path import join
 from scipy.integrate import simps
@@ -15,115 +14,163 @@ from collections import OrderedDict
 from scipy.interpolate import LinearNDInterpolator
 from scipy.spatial import Delaunay
 import h5py
+import os
+import turbulucid as tbl
+import vtk
+from vtk.numpy_interface import dataset_adapter as dsa
+from vtk.util.numpy_support import *
 
 __all__ = ["UnstructuredChannelFlow"]
 
 
 class UnstructuredChannelFlow(Postcipe):
 
-    def __init__(self, path, nu, nSamples, wallModel=False):
+    def __init__(self, path, nu, n, time, wallModel=False):
         Postcipe.__init__(self)
         self.case = path
         self.readPath = join(self.case)
         self.nu = nu
-
-        self.tblCase = tbl.Case(self.readPath)
-        self.nSamples = nSamples
+        self.n = n
         self.wallModel = wallModel
+        self.time = time
 
-        # line = vtk.vtkLineSource()
-        # probeFilter = vtk.vtkProbeFilter()
-        # probeFilter.SetSourceData(self.tblCase.vtkData.VTKObject)
+    def read(self, time, debug=False):
+        """Read the case from a given path to .foam file.
+
+        Parameters
+        ----------
+        time : float
+            The time step to load, default to latest time
+
+        Returns
+        -------
+            The reader updated with the read case.
+
+        Raises
+        ------
+        ValueError
+            If the path is not valid.
 
 
-        # smallDx = 9/(2*nSamples)
-        # for seed in range(int(nSeedPoints)):
-        #
-        #     seedPoint = seeds[seed]
-        #     line.SetResolution(nSamples - 1)
-        #     line.SetPoint1(0 + smallDx, seedPoint, 0)
-        #     line.SetPoint2(9 - smallDx, seedPoint, 0)
-        #     line.Update()
-        #
-        #     probeFilter.SetInputConnection(line.GetOutputPort())
-        #     probeFilter.Update()
-        #
-        #     probeData = dsa.WrapDataObject(probeFilter.GetOutput()).PointData
-        #
-        #     for field in avrgFields:
-        #         if avrgFields[field].shape[1] == 9:  # a tensor
-        #             reshaped = probeData[field].reshape((nSamples, 9))
-        #             avrgFields[field][seed] = np.mean(reshaped, axis=0)
-        #         else:
-        #             avrgFields[field][seed] = np.mean(probeData[field], axis=0)
-        #
-        # self.avrgFields = avrgFields
+        """
+        # Check that paths are valid
+
+        if not os.path.exists(self.case):
+            raise ValueError("Provided path to .foam file invalid!")
+
+        if debug:
+            print("    Opening the case")
+        # Case reader
+        reader = vtk.vtkOpenFOAMReader()
+        reader.SetFileName(self.case)
+        reader.Update()
+
+        if debug:
+            print("    Changing reader parameters")
+        reader.CreateCellToPointOff()
+        reader.DisableAllPointArrays()
+        reader.EnableAllPatchArrays()
+        reader.DecomposePolyhedraOn()
+        reader.Update()
+        reader.UpdateInformation()
+
+        info = reader.GetExecutive().GetOutputInformation(0)
+
+        if debug:
+            print("The available timesteps are", vtk_to_numpy(reader.GetTimeValues()))
+
+        if time is None:
+            print("Selecting the latest available time step")
+            info.Set(vtk.vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP(),
+                     vtk_to_numpy(reader.GetTimeValues())[-1])
+        else:
+            print("Selecting the time step", time)
+            info.Set(vtk.vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP(), time)
+
+        reader.Update()
+        reader.UpdateInformation()
+
+        return reader
 
     def compute(self):
-        seeds = np.sort(self.tblCase.boundary_data("inlet")[0][:, 1])
-        avrgFields = OrderedDict()
+        d = 1 / self.n
+        y = np.linspace(d / 2, 2 - d / 2, 2 * self.n)
 
-        cellData = self.tblCase.vtkData.GetCellData()
-        nFields = cellData.GetNumberOfArrays()
-        nSeedPoints = seeds.size
+        reader = self.read(self.time)
+        caseData = reader.GetOutput()
+        internalBlock = caseData.GetBlock(0)
+        patchBlocks = caseData.GetBlock(1)
 
-        for field in range(nFields):
-            name = cellData.GetArrayName(field)
-            nCols = cellData.GetArray(field).GetNumberOfComponents()
-            avrgFields[name] = np.zeros((nSeedPoints, nCols))
+        bounds = internalBlock.GetBounds()
 
-        coords = np.row_stack((self.tblCase.cellCentres,
-                               self.tblCase.boundary_data("inlet")[0],
-                               self.tblCase.boundary_data("outlet")[0]))
-        delaunay = Delaunay(coords)
+        fieldNames = dsa.WrapDataObject(internalBlock).GetCellData().keys()
 
-        dx = 9/self.nSamples
-        for field in avrgFields:
-            if np.ndim(self.tblCase[field]) == 1:
-                data = np.row_stack((self.tblCase[field][:, np.newaxis],
-                                     self.tblCase.boundary_data("inlet")[1][field][:, np.newaxis],
-                                     self.tblCase.boundary_data("outlet")[1][field][:, np.newaxis]))
-            else:
-                data = np.row_stack((self.tblCase[field],
-                                     self.tblCase.boundary_data("inlet")[1][field],
-                                     self.tblCase.boundary_data("outlet")[1][field]))
+        averaged = {}
+        for i, field in enumerate(fieldNames):
+            averaged[field] = []
 
-            interpolant = LinearNDInterpolator(delaunay, data)
-            for seed in range(int(nSeedPoints)):
-                x = dx/2
-                for i in range(self.nSamples-1):
-                    avrgFields[field][seed] += interpolant([x, seeds[seed]])[0]
-                    x += dx
-                avrgFields[field][seed] /= (self.nSamples-1)
+        pointData = vtk.vtkCellDataToPointData()
+        pointData.SetInputData(internalBlock)
+        pointData.Update()
 
-        self.avrgFields = avrgFields
+        plane = vtk.vtkPlaneSource()
+        plane.SetResolution(int(bounds[1] / d), int(bounds[5] / d))
 
-        self.y = np.append(np.append([0], seeds), [2])
-        bot = np.mean(self.tblCase.boundary_data("bottomWall")[1]['UMean'][:,0])
-        top = np.mean(self.tblCase.boundary_data("topWall")[1]['UMean'][:,0])
-        self.u = np.append(np.append(bot, avrgFields['UMean'][:, 0]), top)
-        bot = np.mean(self.tblCase.boundary_data("bottomWall")[1]['UPrime2Mean'][:,0])
-        top = np.mean(self.tblCase.boundary_data("topWall")[1]['UPrime2Mean'][:,0])
-        self.uu = np.append(np.append(bot, avrgFields['UPrime2Mean'][:, 0]), top)
-        bot = np.mean(self.tblCase.boundary_data("bottomWall")[1]['UPrime2Mean'][:,1])
-        top = np.mean(self.tblCase.boundary_data("topWall")[1]['UPrime2Mean'][:,1])
-        self.vv = np.append(np.append(bot, avrgFields['UPrime2Mean'][:, 1]), top)
-        bot = np.mean(self.tblCase.boundary_data("bottomWall")[1]['UPrime2Mean'][:,2])
-        top = np.mean(self.tblCase.boundary_data("topWall")[1]['UPrime2Mean'][:,2])
-        self.ww = np.append(np.append(bot, avrgFields['UPrime2Mean'][:, 2]), top)
-        bot = np.mean(self.tblCase.boundary_data("bottomWall")[1]['UPrime2Mean'][:,3])
-        top = np.mean(self.tblCase.boundary_data("topWall")[1]['UPrime2Mean'][:,3])
-        self.uv = np.append(np.append(bot, avrgFields['UPrime2Mean'][:, 3]), top)
+        kernel = vtk.vtkVoronoiKernel()
+
+        interpolator = vtk.vtkPointInterpolator()
+        interpolator.SetSourceData(pointData.GetOutput())
+        interpolator.SetKernel(kernel)
+
+        # Internal field, go layer by layer
+        for i in range(y.size):
+            plane.SetOrigin(0.55 * (bounds[0] + bounds[1]), y[i], 0.15 * (bounds[4] + bounds[5]))
+            plane.SetPoint1(bounds[0], y[i], bounds[4])
+            plane.SetPoint2(bounds[1], y[i], bounds[5])
+            plane.Update()
+
+            interpolator.SetInputConnection(plane.GetOutputPort())
+            interpolator.Update()
+
+            interpolatedData = dsa.WrapDataObject(interpolator.GetOutput()).GetPointData()
+            for field in fieldNames:
+                averaged[field].append(np.mean(interpolatedData[field], axis=0))
+
+        # Patch data
+        for wall in ["bottomWall", "topWall"]:
+            wallBlock = patchBlocks.GetBlock(self.get_block_index(patchBlocks, wall))
+            cellSizeFilter = vtk.vtkCellSizeFilter()
+            cellSizeFilter.SetInputData(wallBlock)
+            cellSizeFilter.Update()
+            area = dsa.WrapDataObject(cellSizeFilter.GetOutput()).CellData['Area']
+
+            wallData = dsa.WrapDataObject(wallBlock).CellData
+
+            for field in fieldNames:
+                # area weighted average
+                avrg = np.sum(wallData[field] * area, axis=0) / np.sum(area)
+                if wall == "bottomWall":
+                    averaged[field].insert(0, avrg)
+                else:
+                    averaged[field].append(avrg)
+
+        for field in fieldNames:
+            averaged[field] = np.array(averaged[field])
+
+        self.y = np.append(np.append(0, y), 2)
+        self.avrgFields = averaged
+
+        self.u = self.avrgFields['UMean'][:, 0]
+        self.uu = self.avrgFields['UPrime2Mean'][:, 0]
+        self.vv = self.avrgFields['UPrime2Mean'][:, 1]
+        self.ww = self.avrgFields['UPrime2Mean'][:, 2]
+        self.uv = self.avrgFields['UPrime2Mean'][:, 3]
         self.k = 0.5*(self.uu + self.vv + self.ww)
-        bot = np.mean(self.tblCase.boundary_data("bottomWall")[1]['nutMean'])
-        top = np.mean(self.tblCase.boundary_data("topWall")[1]['nutMean'])
-        self.nut = np.append(np.append(bot, avrgFields['nutMean']), top)
-        bot = np.mean(self.tblCase.boundary_data("bottomWall")[1]['wallShearStressMean'][:, 0])
-        top = np.mean(self.tblCase.boundary_data("topWall")[1]['wallShearStressMean'][:, 0])
+        self.nut = self.avrgFields['nutMean']
 
         self.tau = 0
         if self.wallModel:
-            self.wss = np.append(np.append(bot, avrgFields['wallShearStress'][:, 0]), top)
+            self.wss = self.avrgFields['wallShearStress'][:, 0]
             self.tau = 0.5*(self.wss[0] + self.wss[-1])
         else:
             self.tau = self.nu*0.5*(self.u[1] + self.u[-2])/self.y[1]
@@ -253,3 +300,31 @@ class UnstructuredChannelFlow(Postcipe):
             error = np.abs(error)
 
         return error
+
+    def get_block_index(self, blocks, name):
+        """Get the index of the block by name.
+
+        Parameters
+        ----------
+        blocks : vtkMultiBlockDataSet
+            The dataset with the blocks.
+        name : str
+            The name of the block that is sought.
+
+        Returns
+        -------
+        int
+            The index of the sought block.
+
+        """
+        number = -1
+        for i in range(blocks.GetNumberOfBlocks()):
+            if (blocks.GetMetaData(i).Get(vtk.vtkCompositeDataSet.NAME()) ==
+                    name):
+                number = i
+                break
+
+        if number == -1:
+            raise NameError("No block named " + name + " found")
+
+        return number

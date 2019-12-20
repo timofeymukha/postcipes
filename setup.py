@@ -10,6 +10,7 @@ setup(name='postcipes',
       packages=find_packages(),
       entry_points = {
           'console_scripts':[
+              'copyFromTimeDirs=postcipes.bin.copyFormTimeDirs:main'
                             ]
       },
       install_requires=[

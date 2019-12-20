@@ -11,10 +11,10 @@ import os
 import numpy as np
 import h5py
 
-__all__ = ["SwakPatchExpression"]
+__all__ = []
 
 
-class SwakPatchExpression:
+class SwakCellZoneExpression:
 
     def __init__(self, path):
 
@@ -22,9 +22,9 @@ class SwakPatchExpression:
         timesFloat = [float(i) for i in times]
         times = times[np.argsort(timesFloat)]
         self.times = times
-        self.patches = os.listdir(join(path, times[0]))
+        self.zones = os.listdir(join(path, times[0]))
         data = {}
-        for patch in self.patches:
+        for patch in self.zones:
             patchData = np.genfromtxt(join(path, times[0], patch))
             for time in times[1:]:
                 patchData = np.append(patchData, np.genfromtxt(join(path, time, patch)), axis=0)
@@ -37,4 +37,3 @@ class SwakPatchExpression:
 
     def __getitem__(self, item):
         return self.data[item]
-

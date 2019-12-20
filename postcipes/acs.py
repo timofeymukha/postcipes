@@ -26,7 +26,7 @@ class ACS(Postcipe):
         self.nuAir = 1.48e-05
         self.nuWater = 1.139e-06
         self.rhoWater = 999
-        self.rhoAir = 1
+        self.rhoAir = 2.5
         self.muAir = self.nuAir*self.rhoAir
         self.muWater = self.nuWater*self.rhoWater
 

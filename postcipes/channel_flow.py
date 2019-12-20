@@ -11,13 +11,14 @@ import turbulucid as tbl
 import numpy as np
 from os.path import join
 from scipy.integrate import simps
+from scipy.interpolate import interp1d
 
 __all__ = ["ChannelFlow"]
 
 
 class ChannelFlow(Postcipe):
 
-    def __init__(self, path, nu, time, wallModel=False, kBudget=False):
+    def __init__(self, path, nu, time, wallModel=False, kBudget=False, readH=False):
         Postcipe.__init__(self)
         self.case = path
         self.readPath = join(self.case, "postProcessing", "collapsedFields",
@@ -26,8 +27,9 @@ class ChannelFlow(Postcipe):
         self.time = time
 
         self.y = np.genfromtxt(join(self.readPath, "UMean_X.xy"))[:, 0]
-        self.yf = self.cell_faces()
         self.u = np.genfromtxt(join(self.readPath, "UMean_X.xy"))[:, 1]
+        self.v = np.genfromtxt(join(self.readPath, "UMean_Y.xy"))[:, 1]
+        self.w = np.genfromtxt(join(self.readPath, "UMean_Z.xy"))[:, 1]
         self.uu = np.genfromtxt(join(self.readPath, "UPrime2Mean_XX.xy"))[:, 1]
         self.vv = np.genfromtxt(join(self.readPath, "UPrime2Mean_YY.xy"))[:, 1]
         self.ww = np.genfromtxt(join(self.readPath, "UPrime2Mean_ZZ.xy"))[:, 1]
@@ -43,6 +45,13 @@ class ChannelFlow(Postcipe):
             self.kTurbulentTransport = np.genfromtxt(join(self.readPath, "kTurbulentTransportMean.xy"))[:, 1]
             self.kDissipation = np.genfromtxt(join(self.readPath, "kDissipationMean.xy"))[:, 1]
             self.kSgsDiffusion = np.genfromtxt(join(self.readPath, "kSgsDiffusion.xy"))[:, 1]
+
+            self.kBalance = np.copy(self.kProduction)
+            self.kBalance += self.kConvection
+            self.kBalance += self.kViscousDiffusion
+            self.kBalance += self.kPressureVelocityTransport
+            self.kBalance += self.kTurbulentTransport
+            self.kBalance += self.kDissipation
 
 
         self.tau = 0
@@ -88,6 +97,10 @@ class ChannelFlow(Postcipe):
         self.reTheta = self.theta*self.uC/self.nu
         self.reDelta99 = self.delta99*self.uC/self.nu
         self.reDeltaStar = self.deltaStar*self.uC/self.nu
+        self.yf = self.cell_faces()
+        if readH:
+            self.h = np.genfromtxt(join(self.readPath,
+                                     "h.xy"))[:, 1]
 
     def cell_faces(self):
         faces = np.zeros(self.y.size - 1)
@@ -99,6 +112,9 @@ class ChannelFlow(Postcipe):
                 continue
             else:
                 faces[i] = faces[i - 1] + (self.y[i] - faces[i - 1])*2
+                # Ensure delta faces is set exact
+                if np.abs(faces[i] - self.delta)/self.delta < 0.01:
+                    faces[i] = self.delta
 
         return faces
 
@@ -111,17 +127,38 @@ class ChannelFlow(Postcipe):
 
         return error
 
+    def cell_average_dns(self, dnsY, dnsV):
+        dnsInterp = interp1d(np.append(dnsY, [1]), np.append(dnsV, dnsV[-1]))
+        yf = self.yf[self.yf < self.delta + 1e-10]
+        print(yf)
+
+        dnsAvrg = np.zeros(yf.size - 1)
+
+        for i, _ in enumerate(dnsAvrg):
+            yCell = dnsY[np.logical_and(dnsY > yf[i], dnsY < yf[i + 1])]
+            vCell = dnsV[np.logical_and(dnsY > yf[i], dnsY < yf[i + 1])]
+
+            yCell = np.append(np.append(yf[i], yCell), yf[i + 1])
+            vStart = dnsInterp(yf[i])
+            vEnd = dnsInterp(yf[i + 1])
+            vCell = np.append(np.append(vStart, vCell), vEnd)
+
+            print(yCell)
+            dnsAvrg[i] = simps(vCell, x=yCell)/(yCell[-1] - yCell[0])
+
+        return dnsAvrg
+
+
+
+
     def u_relative_error(self, benchY, benchU, bound=0.2, procent=True):
-        from scipy.interpolate import interp1d
+
         bound = bound*self.delta
         benchInterp = interp1d(np.append(benchY, [1]), np.append(benchU, benchU[-1]))
         wmlesInterp = interp1d(self.y, self.u)
-        lowerIndY = np.argmin(np.abs(bound - self.y))
-        upperIndY = int(self.y.size/2)
 
         y = np.linspace(bound, 1, 200)
 
-        #error = np.max(np.abs(self.u[lowerIndY:upperIndY] - benchInterp(self.y[lowerIndY:upperIndY])))/np.max(benchU)
         error = np.max(np.abs(wmlesInterp(y) - benchInterp(y)))/np.max(benchU)
 
         if procent:
