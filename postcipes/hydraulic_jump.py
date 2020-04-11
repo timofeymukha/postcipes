@@ -17,23 +17,26 @@ __all__ = ["HydraulicJump"]
 
 class HydraulicJump(Postcipe):
 
-    def __init__(self, path, xtoe):
+    def __init__(self, path):
         Postcipe.__init__(self)
         self.case = tbl.Case(path)
-        self.xtoe = xtoe
         self.case['alphag'] = 1 - self.case['alpha.waterMean']
         self.U = self.case.boundary_data("inlet", sort="y")[1]['U'][0, 0]
 
         alpha_inlet = self.case.boundary_data("inlet", sort="y")[1]['alpha.water']
         y_inlet = self.case.boundary_data("inlet", sort="y")[0][:, 1]
-        alpha_interp = interp1d(y_inlet, alpha_inlet)
+        #alpha_interp = interp1d(y_inlet, alpha_inlet)
 
-        y_inlet_new = np.linspace(y_inlet[0], y_inlet[-1], 10000)
-        alpha_inlet_new = alpha_interp(y_inlet_new)
-        self.d = y_inlet_new[np.argmin(np.abs(alpha_inlet_new - 0.5))]
+        #y_inlet_new = np.linspace(y_inlet[0], y_inlet[-1], 10000)
+        #alpha_inlet_new = alpha_interp(y_inlet_new)
+        inlet_edge_length = tbl.edge_lengths(self.case, "inlet")
+        self.d = y_inlet[-1] + 0.5*inlet_edge_length[-1]
         self.Fr1 = self.U/np.sqrt(9.81*self.d)
 
         iso05 = tbl.isoline(self.case, "alpha.waterMean", 0.5)
         idx = iso05[:, 0].argsort()
         self.xfs = iso05[idx, 0]
-        self.yfs =  iso05[idx, 1]
+        self.yfs = iso05[idx, 1]
+
+        idx_toe = np.argmin(np.abs(self.d*1.1 - self.yfs[:int(self.yfs.size/2)]))
+        self.xtoe = self.xfs[idx_toe]

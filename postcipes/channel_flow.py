@@ -9,6 +9,7 @@ from __future__ import print_function
 from .postcipe import Postcipe
 import turbulucid as tbl
 import numpy as np
+import h5py
 from os.path import join
 from scipy.integrate import simps
 from scipy.interpolate import interp1d
@@ -165,3 +166,42 @@ class ChannelFlow(Postcipe):
             error *= 100
 
         return error
+
+    def save(self, name):
+        f = h5py.File(name, 'w')
+
+        f.attrs["nu"] = self.nu
+        f.attrs["uTau"] = self.uTau
+        f.attrs["uB"] = self.uB
+        f.attrs["uC"] = self.uC
+        f.attrs["delta"] = self.delta
+        f.attrs["delta99"] = self.delta99
+        f.attrs["deltaStar"] = self.deltaStar
+        f.attrs["theta"] = self.reTheta
+        f.attrs["reDelta99"] = self.reDelta99
+        f.attrs["reDeltaStar"] = self.reDeltaStar
+        f.attrs["reTheta"] = self.reTheta
+        f.attrs["reTau"] = self.reTau
+        f.attrs["reB"] = self.reB
+        f.attrs["reC"] = self.reC
+
+        f.create_dataset("y", data=self.y)
+        f.create_dataset("u", data=self.u)
+        f.create_dataset("uu", data=self.uu)
+        f.create_dataset("vv", data=self.vv)
+        f.create_dataset("ww", data=self.ww)
+        f.create_dataset("k", data=self.k)
+        f.create_dataset("uv", data=self.uv)
+        f.create_dataset("nut", data=self.nut)
+        f.create_dataset("yPlus",data=self.yPlus)
+        f.create_dataset("uPlus", data=self.uPlus)
+        f.create_dataset("uuPlus", data=self.uuPlus)
+        f.create_dataset("vvPlus", data=self.vvPlus)
+        f.create_dataset("wwPlus", data=self.wwPlus)
+        f.create_dataset("uvPlus", data=self.uvPlus)
+        f.create_dataset("kPlus", data=self.kPlus)
+        f.create_dataset("uRms", data=self.uRms)
+        f.create_dataset("vRms", data=self.vRms)
+        f.create_dataset("wRms", data=self.wRms)
+
+        f.close()
