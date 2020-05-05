@@ -32,6 +32,8 @@ class HydraulicJump(Postcipe):
         inlet_edge_length = tbl.edge_lengths(self.case, "inlet")
         self.d = y_inlet[-1] + 0.5*inlet_edge_length[-1]
         self.Fr1 = self.U/np.sqrt(9.81*self.d)
+        self.d2 = self.d*(np.sqrt(1 + 8*self.Fr1**2) - 1)/2
+        self.Fr2 = self.U/np.sqrt(9.81*self.d2)
 
         iso05 = tbl.isoline(self.case, "alpha.waterMean", 0.5)
         idx = iso05[:, 0].argsort()
