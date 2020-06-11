@@ -19,8 +19,10 @@ __all__ = ["ChannelFlow"]
 
 class ChannelFlow(Postcipe):
 
-    def __init__(self, path, nu, time, wallModel=False, kBudget=False, readH=False):
+    def __init__(self, path=None, nu=None, time=None, wallModel=False, kBudget=False, readH=False, initEmpty=False):
         Postcipe.__init__(self)
+        if initEmpty:
+            return
         self.case = path
         self.readPath = join(self.case, "postProcessing", "collapsedFields",
                              str(time))
@@ -203,5 +205,45 @@ class ChannelFlow(Postcipe):
         f.create_dataset("uRms", data=self.uRms)
         f.create_dataset("vRms", data=self.vRms)
         f.create_dataset("wRms", data=self.wRms)
+
+        f.close()
+
+    def load(self, name):
+        f = h5py.File(name, 'r')
+
+        self.nu = f.attrs["nu"]
+        self.uTau = f.attrs["uTau"]
+        self.uB = f.attrs["uB"]
+        self.uC = f.attrs["uC"]
+        self.delta = f.attrs["delta"]
+        self.delta99 = f.attrs["delta99"]
+        self.deltaStar = f.attrs["deltaStar"]
+        self.reTheta = f.attrs["theta"]
+        self.reDelta99 = f.attrs["reDelta99"]
+        self.reDeltaStar = f.attrs["reDeltaStar"]
+        self.reTheta = f.attrs["reTheta"]
+        self.reTau = f.attrs["reTau"]
+        self.reB = f.attrs["reB"]
+        self.reC = f.attrs["reC"]
+
+        self.y = f["y"][:]
+        self.u = f["u"][:]
+        self.uu = f["uu"][:]
+        self.vv = f["vv"][:]
+        self.ww = f["ww"][:]
+        self.k = f["k"][:]
+        self.uv = f["uv"][:]
+        self.nut = f["nut"][:]
+        self.yPlus = f["yPlus"][:]
+        self.uPlus = f["uPlus"][:]
+        self.uuPlus= f["uuPlus"][:]
+        self.vvPlus = f["vvPlus"][:]
+        self.wwPlus = f["wwPlus"][:]
+        self.uvPlus = f["uvPlus"][:]
+        self.uvPlus = f["kPlus"][:]
+        self.uRms = f["uRms"][:]
+        self.vRms = f["vRms"][:]
+        self.vRms = f["wRms"][:]
+        self.kPlus = f["kPlus"][:]
 
         f.close()

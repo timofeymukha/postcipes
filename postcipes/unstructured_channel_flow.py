@@ -92,16 +92,19 @@ class UnstructuredChannelFlow(Postcipe):
 
         return reader
 
-    def compute(self):
+    def compute(self, debug=False):
         d = 1 / self.n
         y = np.linspace(d / 2, 2 - d / 2, 2 * self.n)
 
-        reader = self.read(self.time)
+        reader = self.read(self.time, debug=debug)
         caseData = reader.GetOutput()
         internalBlock = caseData.GetBlock(0)
         patchBlocks = caseData.GetBlock(1)
 
         bounds = internalBlock.GetBounds()
+
+        if debug:
+            print(bounds)
 
         fieldNames = dsa.WrapDataObject(internalBlock).GetCellData().keys()
 
@@ -170,7 +173,7 @@ class UnstructuredChannelFlow(Postcipe):
 
         self.tau = 0
         if self.wallModel:
-            self.wss = self.avrgFields['wallShearStress'][:, 0]
+            self.wss = self.avrgFields['wallShearStressMean'][:, 0]
             self.tau = 0.5*(self.wss[0] + self.wss[-1])
         else:
             self.tau = self.nu*0.5*(self.u[1] + self.u[-2])/self.y[1]
