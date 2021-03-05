@@ -9,7 +9,7 @@ from .channel_flow import ChannelFlow
 from .hydraulic_jump import HydraulicJump
 from .unstructured_channel_flow import UnstructuredChannelFlow
 from .acs import ACS
-from .nek_channel_flow import NekChannelFlow, gll
+from .nek_channel_flow import NekChannelFlow, gll, lagrange_interpolate
 
 __all__ = ["BackwardFacingStep", "ChannelFlow", "Postcipe", "UnstructuredChannelFlow", "ACS", "HydraulicJump",
-           "NekChannelFlow", "gll"]
+           "NekChannelFlow", "gll", "lagrange_interpolate"]

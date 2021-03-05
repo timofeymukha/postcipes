@@ -16,7 +16,7 @@ from scipy.interpolate import interp1d
 import glob
 from scipy.special import roots_jacobi
 
-__all__ = ["NekChannelFlow", "gll", "gll_int"]
+__all__ = ["NekChannelFlow", "gll", "gll_int", "lagrange_interpolate"]
 
 
 def gll_int(f, a, b):
@@ -48,35 +48,55 @@ def gll(n):
     return x, w
 
 
+def lagrange_interpolate(y, coeffs, lx1, ppelem=None):
+    nely = y.size / lx1
+    offset = 0
+
+    if ppelem is None:
+        ppelem = 10 * lx1
+
+    totaly = []
+    vals = []
+    for e in range(int(nely)):
+        ind = np.arange(offset, offset + lx1)
+        ylocal = np.linspace(y[ind[0]], y[ind[-1]], ppelem)
+        totaly.append(ylocal)
+        vals.append(np.poly1d(coeffs[e])(ylocal))
+        offset += lx1
+    return np.array(totaly).flatten(), np.array(vals).flatten()
+
+
 class NekChannelFlow(Postcipe):
 
-    def __init__(self, path=None, basename=None, starttime=0, lx1=8, nu=None):
+    def __init__(self, path, basename, starttime=0, lx1=8, nu=None):
         Postcipe.__init__(self)
 
         self.case = path
         self.basename = basename
         self.nu = nu
+        self.lx1 = lx1
         datafiles = glob.glob(self.case + '\\sts' + basename +'[0-1].f[0-9][0-9][0-9][0-9][0-9]')
         datasets = [ds.open_dataset(i) for i in datafiles]
 
         if len(datasets) is 0:
             raise FileExistsError
 
-        namemap = {"s01": "u", "s05": "uu", "s06": "vv", "s07": "ww", "s09": "uv"}
+        namemap = {"s01": "u", "s02": "v", "s03" : "w", "s05": "uu",
+                   "s06": "vv", "s07": "ww", "s09": "uv"}
 
         ndatasets = len(datasets)
         nx = datasets[0].x.size
         nelx = nx / lx1
 
         integral = {}
-        for key in ["s01", "s05", "s06", "s07", "s09"]:
+        for key in ["s01", "s02", "s03", "s05", "s06", "s07", "s09"]:
             integral[key] = np.zeros(datasets[0].y.size)
 
         for d in datasets:
             if d.time.data < starttime:
                 ndatasets -= 1
                 continue
-            for key in ["s01", "s05", "s06", "s07", "s09"]:
+            for key in ["s01", "s02", "s03", "s05", "s06", "s07", "s09"]:
                 offset = 0
                 for e in range(int(nelx)):
                     ind = np.arange(offset, offset + lx1)
@@ -92,12 +112,65 @@ class NekChannelFlow(Postcipe):
             integral[key] /= nelx*ndatasets
 
         self.u = integral["s01"]
+        self.v = integral["s02"]
+        self.w = integral["s03"]
         self.uu = integral["s05"] - self.u*self.u
         self.vv = integral["s06"]
         self.ww = integral["s07"]
         self.uv = integral["s09"]
 
         self.y = datasets[0].y.data
+        self.compute_interpolants()
+        dudyb = np.poly1d(self.u_polys[0]).deriv()(self.y[0])
+        dudyt = np.abs(np.poly1d(self.u_polys[-1]).deriv()(self.y[-1]))
+        dudy = 0.5 * (dudyb + dudyt)
+        print(dudy)
+        self.tau_w = nu*dudy
+        self.utau = np.sqrt(self.tau_w)
+        self.retau = self.utau / nu * 0.5*(self.y[-1] - self.y[0])
+
+        self.yplus = self.y*self.utau/self.nu
+
+    def compute_interpolants(self):
+        from scipy.interpolate import lagrange
+        lx1 = self.lx1
+
+        nely = int(self.y.size/lx1)
+        offset = 0
+
+        u = []
+        v = []
+        w = []
+        uu = []
+        vv = []
+        ww = []
+        uv = []
+        for e in range(nely):
+            ind = np.arange(offset, offset + lx1)
+            p = lagrange(self.y[ind], self.u[ind]).coeffs
+            u.append(p)
+            p = lagrange(self.y[ind], self.v[ind]).coeffs
+            v.append(p)
+            p = lagrange(self.y[ind], self.w[ind]).coeffs
+            w.append(p)
+            p = lagrange(self.y[ind], self.uu[ind]).coeffs
+            uu.append(p)
+            p = lagrange(self.y[ind], self.vv[ind]).coeffs
+            vv.append(p)
+            p = lagrange(self.y[ind], self.ww[ind]).coeffs
+            ww.append(p)
+            p = lagrange(self.y[ind], self.uv[ind]).coeffs
+            uv.append(p)
+            offset += lx1
+
+        self.u_polys = np.array(u)
+        self.v_polys = np.array(v)
+        self.w_polys = np.array(w)
+        self.uu_polys = np.array(uu)
+        self.vv_polys = np.array(vv)
+        self.ww_polys = np.array(ww)
+        self.uv_polys = np.array(uv)
+
 
 #        self.uTau = np.sqrt(self.tau)
 #        self.delta = 0.5*(self.y[-1] - self.y[0])
@@ -168,38 +241,39 @@ class NekChannelFlow(Postcipe):
         f = h5py.File(name, 'w')
 
         f.attrs["nu"] = self.nu
-        f.attrs["uTau"] = self.uTau
-        f.attrs["uB"] = self.uB
-        f.attrs["uC"] = self.uC
-        f.attrs["delta"] = self.delta
-        f.attrs["delta99"] = self.delta99
-        f.attrs["deltaStar"] = self.deltaStar
-        f.attrs["theta"] = self.reTheta
-        f.attrs["reDelta99"] = self.reDelta99
-        f.attrs["reDeltaStar"] = self.reDeltaStar
-        f.attrs["reTheta"] = self.reTheta
-        f.attrs["reTau"] = self.reTau
-        f.attrs["reB"] = self.reB
-        f.attrs["reC"] = self.reC
+        f.attrs["lx1"] = self.lx1
+        f.attrs["utau"] = self.utau
+#        f.attrs["uB"] = self.uB
+#        f.attrs["uC"] = self.uC
+#        f.attrs["delta"] = self.delta
+#        f.attrs["delta99"] = self.delta99
+#        f.attrs["deltaStar"] = self.deltaStar
+#        f.attrs["theta"] = self.reTheta
+#        f.attrs["reDelta99"] = self.reDelta99
+#        f.attrs["reDeltaStar"] = self.reDeltaStar
+#        f.attrs["reTheta"] = self.reTheta
+        f.attrs["retau"] = self.retau
+#        f.attrs["reB"] = self.reB
+#        f.attrs["reC"] = self.reC
 
         f.create_dataset("y", data=self.y)
         f.create_dataset("u", data=self.u)
         f.create_dataset("uu", data=self.uu)
         f.create_dataset("vv", data=self.vv)
         f.create_dataset("ww", data=self.ww)
-        f.create_dataset("k", data=self.k)
+#        f.create_dataset("k", data=self.k)
         f.create_dataset("uv", data=self.uv)
-        f.create_dataset("nut", data=self.nut)
-        f.create_dataset("yPlus",data=self.yPlus)
-        f.create_dataset("uPlus", data=self.uPlus)
-        f.create_dataset("uuPlus", data=self.uuPlus)
-        f.create_dataset("vvPlus", data=self.vvPlus)
-        f.create_dataset("wwPlus", data=self.wwPlus)
-        f.create_dataset("uvPlus", data=self.uvPlus)
-        f.create_dataset("kPlus", data=self.kPlus)
-        f.create_dataset("uRms", data=self.uRms)
-        f.create_dataset("vRms", data=self.vRms)
-        f.create_dataset("wRms", data=self.wRms)
+#        f.create_dataset("nut", data=self.nut)
+        f.create_dataset("yplus",data=self.yplus)
+#        f.create_dataset("uPlus", data=self.uPlus)
+#        f.create_dataset("uuPlus", data=self.uuPlus)
+#        f.create_dataset("vvPlus", data=self.vvPlus)
+#        f.create_dataset("wwPlus", data=self.wwPlus)
+#        f.create_dataset("uvPlus", data=self.uvPlus)
+#        f.create_dataset("kPlus", data=self.kPlus)
+#        f.create_dataset("uRms", data=self.uRms)
+#        f.create_dataset("vRms", data=self.vRms)
+#        f.create_dataset("wRms", data=self.wRms)
 
         f.close()
 
@@ -207,38 +281,38 @@ class NekChannelFlow(Postcipe):
         f = h5py.File(name, 'r')
 
         self.nu = f.attrs["nu"]
-        self.uTau = f.attrs["uTau"]
-        self.uB = f.attrs["uB"]
-        self.uC = f.attrs["uC"]
-        self.delta = f.attrs["delta"]
-        self.delta99 = f.attrs["delta99"]
-        self.deltaStar = f.attrs["deltaStar"]
-        self.reTheta = f.attrs["theta"]
-        self.reDelta99 = f.attrs["reDelta99"]
-        self.reDeltaStar = f.attrs["reDeltaStar"]
-        self.reTheta = f.attrs["reTheta"]
-        self.reTau = f.attrs["reTau"]
-        self.reB = f.attrs["reB"]
-        self.reC = f.attrs["reC"]
+#        self.uTau = f.attrs["uTau"]
+#        self.uB = f.attrs["uB"]
+#        self.uC = f.attrs["uC"]
+#        self.delta = f.attrs["delta"]
+#        self.delta99 = f.attrs["delta99"]
+#        self.deltaStar = f.attrs["deltaStar"]
+#        self.reTheta = f.attrs["theta"]
+#        self.reDelta99 = f.attrs["reDelta99"]
+#        self.reDeltaStar = f.attrs["reDeltaStar"]
+#        self.reTheta = f.attrs["reTheta"]
+#        self.reTau = f.attrs["reTau"]
+#        self.reB = f.attrs["reB"]
+#        self.reC = f.attrs["reC"]
 
         self.y = f["y"][:]
         self.u = f["u"][:]
         self.uu = f["uu"][:]
         self.vv = f["vv"][:]
         self.ww = f["ww"][:]
-        self.k = f["k"][:]
+#        self.k = f["k"][:]
         self.uv = f["uv"][:]
-        self.nut = f["nut"][:]
-        self.yPlus = f["yPlus"][:]
-        self.uPlus = f["uPlus"][:]
-        self.uuPlus= f["uuPlus"][:]
-        self.vvPlus = f["vvPlus"][:]
-        self.wwPlus = f["wwPlus"][:]
-        self.uvPlus = f["uvPlus"][:]
-        self.uvPlus = f["kPlus"][:]
-        self.uRms = f["uRms"][:]
-        self.vRms = f["vRms"][:]
-        self.vRms = f["wRms"][:]
-        self.kPlus = f["kPlus"][:]
+#        self.nut = f["nut"][:]
+#        self.yPlus = f["yPlus"][:]
+#        self.uPlus = f["uPlus"][:]
+#        self.uuPlus= f["uuPlus"][:]
+#        self.vvPlus = f["vvPlus"][:]
+#        self.wwPlus = f["wwPlus"][:]
+#        self.uvPlus = f["uvPlus"][:]
+#        self.uvPlus = f["kPlus"][:]
+#        self.uRms = f["uRms"][:]
+#        self.vRms = f["vRms"][:]
+#        self.vRms = f["wRms"][:]
+#        self.kPlus = f["kPlus"][:]
 
         f.close()
