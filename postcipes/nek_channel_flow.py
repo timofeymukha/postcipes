@@ -68,13 +68,15 @@ def lagrange_interpolate(y, coeffs, lx1, ppelem=None):
 
 class NekChannelFlow(Postcipe):
 
-    def __init__(self, path, basename, starttime=0, lx1=8, nu=None):
+    def __init__(self, path, basename, starttime=0, lx1=8, nu=None,
+                 nutstats=False):
         Postcipe.__init__(self)
 
         self.case = path
         self.basename = basename
         self.nu = nu
         self.lx1 = lx1
+        self.nutstats = nutstats
         datafiles = glob.glob(self.case + '\\sts' + basename +'[0-1].f[0-9][0-9][0-9][0-9][0-9]')
         datasets = [ds.open_dataset(i) for i in datafiles]
 
@@ -88,15 +90,20 @@ class NekChannelFlow(Postcipe):
         nx = datasets[0].x.size
         nelx = nx / lx1
 
+        keys = ["s01", "s02", "s03", "s05", "s06", "s07", "s09"]
+        if nutstats is True:
+            keys = keys + ["s45", "s46", "s47", "s48", "s49", "s50", "s51", "s52",
+                        "s53", "s54"]
+
         integral = {}
-        for key in ["s01", "s02", "s03", "s05", "s06", "s07", "s09"]:
+        for key in keys:
             integral[key] = np.zeros(datasets[0].y.size)
 
         for d in datasets:
             if d.time.data < starttime:
                 ndatasets -= 1
                 continue
-            for key in ["s01", "s02", "s03", "s05", "s06", "s07", "s09"]:
+            for key in keys:
                 offset = 0
                 for e in range(int(nelx)):
                     ind = np.arange(offset, offset + lx1)
@@ -119,12 +126,23 @@ class NekChannelFlow(Postcipe):
         self.ww = integral["s07"]
         self.uv = integral["s09"]
 
+        if nutstats:
+            self.nutotdudx = integral["s45"]
+            self.nutotdudy = integral["s46"]
+            self.nutotdudz = integral["s47"]
+            self.nutotdvdx = integral["s48"]
+            self.nutotdvdy = integral["s49"]
+            self.nutotdvdz = integral["s50"]
+            self.nutotdwdx = integral["s51"]
+            self.nutotdwdy = integral["s52"]
+            self.nutotdwdz = integral["s53"]
+            self.nutot = integral["s54"]
+
         self.y = datasets[0].y.data
         self.compute_interpolants()
         dudyb = np.poly1d(self.u_polys[0]).deriv()(self.y[0])
         dudyt = np.abs(np.poly1d(self.u_polys[-1]).deriv()(self.y[-1]))
         dudy = 0.5 * (dudyb + dudyt)
-        print(dudy)
         self.tau_w = nu*dudy
         self.utau = np.sqrt(self.tau_w)
         self.retau = self.utau / nu * 0.5*(self.y[-1] - self.y[0])
@@ -265,6 +283,21 @@ class NekChannelFlow(Postcipe):
         f.create_dataset("uv", data=self.uv)
 #        f.create_dataset("nut", data=self.nut)
         f.create_dataset("yplus",data=self.yplus)
+
+        if self.nutstats:
+            f.create_dataset("nutotdudx", data=self.nutotdudx)
+            f.create_dataset("nutotdudy", data=self.nutotdudy)
+            f.create_dataset("nutotdudz", data=self. nutotdudz)
+            f.create_dataset("nutotdvdx", data=self. nutotdvdx)
+            f.create_dataset("nutotdvdy", data=self.nutotdvdy)
+            f.create_dataset("nutotdvdz", data=self.nutotdvdz)
+            f.create_dataset("nutotdwdx", data=self.nutotdwdx)
+            f.create_dataset("nutotdwdy", data=self.nutotdwdy)
+            f.create_dataset("nutotdwdz", data=self.nutotdwdz)
+            f.create_dataset("nutot",     data=self.nutot)
+
+
+
 #        f.create_dataset("uPlus", data=self.uPlus)
 #        f.create_dataset("uuPlus", data=self.uuPlus)
 #        f.create_dataset("vvPlus", data=self.vvPlus)
@@ -275,44 +308,12 @@ class NekChannelFlow(Postcipe):
 #        f.create_dataset("vRms", data=self.vRms)
 #        f.create_dataset("wRms", data=self.wRms)
 
-        f.close()
-
-    def load(self, name):
-        f = h5py.File(name, 'r')
-
-        self.nu = f.attrs["nu"]
-#        self.uTau = f.attrs["uTau"]
-#        self.uB = f.attrs["uB"]
-#        self.uC = f.attrs["uC"]
-#        self.delta = f.attrs["delta"]
-#        self.delta99 = f.attrs["delta99"]
-#        self.deltaStar = f.attrs["deltaStar"]
-#        self.reTheta = f.attrs["theta"]
-#        self.reDelta99 = f.attrs["reDelta99"]
-#        self.reDeltaStar = f.attrs["reDeltaStar"]
-#        self.reTheta = f.attrs["reTheta"]
-#        self.reTau = f.attrs["reTau"]
-#        self.reB = f.attrs["reB"]
-#        self.reC = f.attrs["reC"]
-
-        self.y = f["y"][:]
-        self.u = f["u"][:]
-        self.uu = f["uu"][:]
-        self.vv = f["vv"][:]
-        self.ww = f["ww"][:]
-#        self.k = f["k"][:]
-        self.uv = f["uv"][:]
-#        self.nut = f["nut"][:]
-#        self.yPlus = f["yPlus"][:]
-#        self.uPlus = f["uPlus"][:]
-#        self.uuPlus= f["uuPlus"][:]
-#        self.vvPlus = f["vvPlus"][:]
-#        self.wwPlus = f["wwPlus"][:]
-#        self.uvPlus = f["uvPlus"][:]
-#        self.uvPlus = f["kPlus"][:]
-#        self.uRms = f["uRms"][:]
-#        self.vRms = f["vRms"][:]
-#        self.vRms = f["wRms"][:]
-#        self.kPlus = f["kPlus"][:]
+        f.create_dataset("u_polys", data=self.u_polys)
+        f.create_dataset("v_polys", data=self.v_polys)
+        f.create_dataset("w_polys", data=self.w_polys)
+        f.create_dataset("uu_polys", data=self.uu_polys)
+        f.create_dataset("vv_polys", data=self.vv_polys)
+        f.create_dataset("ww_polys", data=self.ww_polys)
+        f.create_dataset("uv_polys", data=self.uv_polys)
 
         f.close()
