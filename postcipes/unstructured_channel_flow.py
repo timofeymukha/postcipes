@@ -16,9 +16,8 @@ from scipy.spatial import Delaunay
 import h5py
 import os
 import turbulucid as tbl
-import vtk
-from vtk.numpy_interface import dataset_adapter as dsa
-from vtk.util.numpy_support import *
+from vtkmodules.numpy_interface import dataset_adapter as dsa
+from vtkmodules.util.numpy_support import *
 
 __all__ = ["UnstructuredChannelFlow"]
 
@@ -54,6 +53,8 @@ class UnstructuredChannelFlow(Postcipe):
 
         """
         # Check that paths are valid
+        from vtkmodules.vtkIOGeometry import vtkOpenFOAMReader
+        from vtkmodules.vtkCommonExecutionModel import vtkStreamingDemandDrivenPipeline
 
         if not os.path.exists(self.case):
             raise ValueError("Provided path to .foam file invalid!")
@@ -61,7 +62,7 @@ class UnstructuredChannelFlow(Postcipe):
         if debug:
             print("    Opening the case")
         # Case reader
-        reader = vtk.vtkOpenFOAMReader()
+        reader = vtkOpenFOAMReader()
         reader.SetFileName(self.case)
         reader.Update()
 
@@ -81,11 +82,11 @@ class UnstructuredChannelFlow(Postcipe):
 
         if time is None:
             print("Selecting the latest available time step")
-            info.Set(vtk.vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP(),
+            info.Set(vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP(),
                      vtk_to_numpy(reader.GetTimeValues())[-1])
         else:
             print("Selecting the time step", time)
-            info.Set(vtk.vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP(), time)
+            info.Set(vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP(), time)
 
         reader.Update()
         reader.UpdateInformation()
@@ -93,6 +94,11 @@ class UnstructuredChannelFlow(Postcipe):
         return reader
 
     def compute(self, debug=False):
+        from vtkmodules.vtkFiltersCore import vtkCellDataToPointData
+        from vtkmodules.vtkFiltersSources import vtkPlaneSource
+        from vtkmodules.vtkFiltersPoints import vtkVoronoiKernel, vtkPointInterpolator
+        from vtkmodules.vtkFiltersVerdict import vtkCellSizeFilter
+
         d = 1 / self.n
         y = np.linspace(d / 2, 2 - d / 2, 2 * self.n)
 
@@ -112,16 +118,16 @@ class UnstructuredChannelFlow(Postcipe):
         for i, field in enumerate(fieldNames):
             averaged[field] = []
 
-        pointData = vtk.vtkCellDataToPointData()
+        pointData = vtkCellDataToPointData()
         pointData.SetInputData(internalBlock)
         pointData.Update()
 
-        plane = vtk.vtkPlaneSource()
+        plane = vtkPlaneSource()
         plane.SetResolution(int(bounds[1] / d), int(bounds[5] / d))
 
-        kernel = vtk.vtkVoronoiKernel()
+        kernel = vtkVoronoiKernel()
 
-        interpolator = vtk.vtkPointInterpolator()
+        interpolator = vtkPointInterpolator()
         interpolator.SetSourceData(pointData.GetOutput())
         interpolator.SetKernel(kernel)
 
@@ -142,7 +148,7 @@ class UnstructuredChannelFlow(Postcipe):
         # Patch data
         for wall in ["bottomWall", "topWall"]:
             wallBlock = patchBlocks.GetBlock(self.get_block_index(patchBlocks, wall))
-            cellSizeFilter = vtk.vtkCellSizeFilter()
+            cellSizeFilter = vtkCellSizeFilter()
             cellSizeFilter.SetInputData(wallBlock)
             cellSizeFilter.Update()
             area = dsa.WrapDataObject(cellSizeFilter.GetOutput()).CellData['Area']

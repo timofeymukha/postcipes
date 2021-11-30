@@ -11,6 +11,6 @@ __all__ = ["Postcipe"]
 
 
 class Postcipe:
-
     def __init__(self):
         pass
+    

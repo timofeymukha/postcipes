@@ -90,10 +90,10 @@ class NekChannelFlow(Postcipe):
         nx = datasets[0].x.size
         nelx = nx / lx1
 
-        keys = ["s01", "s02", "s03", "s05", "s06", "s07", "s09"]
+        keys = ["s01", "s02", "s03", "s05", "s06", "s07", "s09", "s11"]
         if nutstats is True:
-            keys = keys + ["s45", "s46", "s47", "s48", "s49", "s50", "s51", "s52",
-                        "s53", "s54"]
+            keys += ["s45", "s46", "s47", "s48", "s49", "s50", "s51", "s52",
+                     "s53", "s54"]
 
         integral = {}
         for key in keys:
@@ -125,6 +125,7 @@ class NekChannelFlow(Postcipe):
         self.vv = integral["s06"]
         self.ww = integral["s07"]
         self.uv = integral["s09"]
+        self.uw = integral["s11"]
 
         if nutstats:
             self.nutotdudx = integral["s45"]
@@ -163,7 +164,11 @@ class NekChannelFlow(Postcipe):
         vv = []
         ww = []
         uv = []
-        for e in range(nely):
+        uw = []
+        nutotdudy = []
+        nutot = []
+
+        for _ in range(nely):
             ind = np.arange(offset, offset + lx1)
             p = lagrange(self.y[ind], self.u[ind]).coeffs
             u.append(p)
@@ -179,6 +184,12 @@ class NekChannelFlow(Postcipe):
             ww.append(p)
             p = lagrange(self.y[ind], self.uv[ind]).coeffs
             uv.append(p)
+            p = lagrange(self.y[ind], self.uw[ind]).coeffs
+            uw.append(p)
+            p = lagrange(self.y[ind], self.nutotdudy[ind]).coeffs
+            nutotdudy.append(p)
+            p = lagrange(self.y[ind], self.nutot[ind]).coeffs
+            nutot.append(p)
             offset += lx1
 
         self.u_polys = np.array(u)
@@ -188,72 +199,9 @@ class NekChannelFlow(Postcipe):
         self.vv_polys = np.array(vv)
         self.ww_polys = np.array(ww)
         self.uv_polys = np.array(uv)
-
-
-#        self.uTau = np.sqrt(self.tau)
-#        self.delta = 0.5*(self.y[-1] - self.y[0])
-#        self.uB = simps(self.u, self.y)/(2*self.delta)
-#        self.uC = 0.5*(self.u[int(self.y.size/2)] +
-#                       self.u[int(self.y.size/2) -1])
-
-#        self.yPlus = self.y*self.uTau/self.nu
-#        self.uPlus = self.u/self.uTau
-#        self.uuPlus = self.uu/self.uTau**2
-#        self.vvPlus = self.vv/self.uTau**2
-#        self.wwPlus = self.ww/self.uTau**2
-#        self.uvPlus = self.uv/self.uTau**2
-#        self.kPlus = self.k/self.uTau**2
-#        self.uRms = np.sqrt(self.uu)/self.uTau
-#        self.vRms = np.sqrt(self.vv)/self.uTau
-#        self.wRms = np.sqrt(self.ww)/self.uTau
-
-#        self.reTau = self.uTau*self.delta/self.nu
-#        self.reB = self.uB*self.delta/self.nu
-#        self.reC = self.uC*self.delta/self.nu
-
-#        self.theta = tbl.momentum_thickness(self.y[:int(self.y.size/2)],
-#                                            self.u[:int(self.u.size/2)],
-#                                            interpolate=True)
-#        self.delta99 = tbl.delta_99(self.y[:int(self.y.size/2)],
-#                                    self.u[:int(self.u.size/2)],
-#                                    interpolate=True)
-
-#        self.deltaStar = tbl.delta_star(self.y[:int(self.y.size/2)],
-#                                        self.u[:int(self.u.size/2)],
-#                                        interpolate=True)
-
-#        self.reTheta = self.theta*self.uC/self.nu
-#        self.reDelta99 = self.delta99*self.uC/self.nu
-#        self.reDeltaStar = self.deltaStar*self.uC/self.nu
-#        if readH:
-#            self.h = np.genfromtxt(join(self.readPath,
-#                                     "h.xy"))[:, 1]
-
-    def utau_relative_error(self, bench, procent=True, abs=False):
-        error = (self.uTau - bench)/bench
-        if procent:
-            error *= 100
-        if abs:
-            error = np.abs(error)
-
-        return error
-
-
-
-    def u_relative_error(self, benchY, benchU, bound=0.2, procent=True):
-
-        bound = bound*self.delta
-        benchInterp = interp1d(np.append(benchY, [1]), np.append(benchU, benchU[-1]))
-        wmlesInterp = interp1d(self.y, self.u)
-
-        y = np.linspace(bound, 1, 200)
-
-        error = np.max(np.abs(wmlesInterp(y) - benchInterp(y)))/np.max(benchU)
-
-        if procent:
-            error *= 100
-
-        return error
+        self.uw_polys = np.array(uw)
+        self.nutotdudy_polys = np.array(nutotdudy)
+        self.nutot_polys = np.array(nutot)
 
     def save(self, name):
         f = h5py.File(name, 'w')
@@ -281,6 +229,7 @@ class NekChannelFlow(Postcipe):
         f.create_dataset("ww", data=self.ww)
 #        f.create_dataset("k", data=self.k)
         f.create_dataset("uv", data=self.uv)
+        f.create_dataset("uw", data=self.uw)
 #        f.create_dataset("nut", data=self.nut)
         f.create_dataset("yplus",data=self.yplus)
 
@@ -295,7 +244,8 @@ class NekChannelFlow(Postcipe):
             f.create_dataset("nutotdwdy", data=self.nutotdwdy)
             f.create_dataset("nutotdwdz", data=self.nutotdwdz)
             f.create_dataset("nutot",     data=self.nutot)
-
+            f.create_dataset("nutot_polys", data=self.nutot_polys)
+            f.create_dataset("nutotdudy_polys", data=self.nutotdudy_polys)
 
 
 #        f.create_dataset("uPlus", data=self.uPlus)
@@ -315,5 +265,6 @@ class NekChannelFlow(Postcipe):
         f.create_dataset("vv_polys", data=self.vv_polys)
         f.create_dataset("ww_polys", data=self.ww_polys)
         f.create_dataset("uv_polys", data=self.uv_polys)
+        f.create_dataset("uw_polys", data=self.uw_polys)
 
         f.close()
