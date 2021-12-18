@@ -99,8 +99,8 @@ class UnstructuredChannelFlow(Postcipe):
         from vtkmodules.vtkFiltersPoints import vtkVoronoiKernel, vtkPointInterpolator
         from vtkmodules.vtkFiltersVerdict import vtkCellSizeFilter
 
-        d = 1 / self.n
-        y = np.linspace(d / 2, 2 - d / 2, 2 * self.n)
+        d = 1/self.n
+        y = np.linspace(d/2, 2 - d/2, 2*self.n)
 
         reader = self.read(self.time, debug=debug)
         caseData = reader.GetOutput()
@@ -123,7 +123,7 @@ class UnstructuredChannelFlow(Postcipe):
         pointData.Update()
 
         plane = vtkPlaneSource()
-        plane.SetResolution(int(bounds[1] / d), int(bounds[5] / d))
+        plane.SetResolution(int(bounds[1]/d), int(bounds[5]/d))
 
         kernel = vtkVoronoiKernel()
 
@@ -133,7 +133,7 @@ class UnstructuredChannelFlow(Postcipe):
 
         # Internal field, go layer by layer
         for i in range(y.size):
-            plane.SetOrigin(0.55 * (bounds[0] + bounds[1]), y[i], 0.15 * (bounds[4] + bounds[5]))
+            plane.SetOrigin(0.55*(bounds[0] + bounds[1]), y[i], 0.15*(bounds[4] + bounds[5]))
             plane.SetPoint1(bounds[0], y[i], bounds[4])
             plane.SetPoint2(bounds[1], y[i], bounds[5])
             plane.Update()
@@ -157,7 +157,7 @@ class UnstructuredChannelFlow(Postcipe):
 
             for field in fieldNames:
                 # area weighted average
-                avrg = np.sum(wallData[field] * area, axis=0) / np.sum(area)
+                avrg = np.sum(wallData[field]*area, axis=0)/np.sum(area)
                 if wall == "bottomWall":
                     averaged[field].insert(0, avrg)
                 else:
@@ -188,7 +188,7 @@ class UnstructuredChannelFlow(Postcipe):
         self.delta = 0.5*(self.y[-1] - self.y[0])
         self.uB = simps(self.u, self.y)/(2*self.delta)
         self.uC = 0.5*(self.u[int(self.y.size/2)] +
-                       self.u[int(self.y.size/2) -1])
+                       self.u[int(self.y.size/2) - 1])
 
         self.yPlus = self.y*self.uTau/self.nu
         self.uPlus = self.u/self.uTau
@@ -220,7 +220,6 @@ class UnstructuredChannelFlow(Postcipe):
         self.reDelta99 = self.delta99*self.uC/self.nu
         self.reDeltaStar = self.deltaStar*self.uC/self.nu
 
-
     def save(self, name):
         f = h5py.File(name, 'w')
 
@@ -247,7 +246,7 @@ class UnstructuredChannelFlow(Postcipe):
         f.create_dataset("k", data=self.k)
         f.create_dataset("uv", data=self.uv)
         f.create_dataset("nut", data=self.nut)
-        f.create_dataset("yPlus",data=self.yPlus)
+        f.create_dataset("yPlus", data=self.yPlus)
         f.create_dataset("uPlus", data=self.uPlus)
         f.create_dataset("uuPlus", data=self.uuPlus)
         f.create_dataset("vvPlus", data=self.vvPlus)
@@ -259,7 +258,6 @@ class UnstructuredChannelFlow(Postcipe):
         f.create_dataset("wRms", data=self.wRms)
 
         f.close()
-
 
     def load(self, name):
         f = h5py.File(name, 'r')
@@ -289,7 +287,7 @@ class UnstructuredChannelFlow(Postcipe):
         self.nut = f["nut"][:]
         self.yPlus = f["yPlus"][:]
         self.uPlus = f["uPlus"][:]
-        self.uuPlus= f["uuPlus"][:]
+        self.uuPlus = f["uuPlus"][:]
         self.vvPlus = f["vvPlus"][:]
         self.wwPlus = f["wwPlus"][:]
         self.uvPlus = f["uvPlus"][:]
