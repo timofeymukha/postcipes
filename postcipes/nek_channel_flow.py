@@ -69,7 +69,7 @@ def lagrange_interpolate(y, coeffs, lx1, ppelem=None):
 class NekChannelFlow(Postcipe):
 
     def __init__(self, path, basename, starttime=0, lx1=8, nu=None,
-                 nutstats=False):
+                 nutstats=False, heat=False):
         Postcipe.__init__(self)
 
         self.case = path
@@ -94,6 +94,12 @@ class NekChannelFlow(Postcipe):
         if nutstats is True:
             keys += ["s45", "s46", "s47", "s48", "s49", "s50", "s51", "s52",
                      "s53", "s54"]
+
+        if heat is True:
+            keys += ["s55", "s56", "s57", "s58", "s59", "s60", "s61", "s62"]
+
+        if nutstats and heat:
+            keys += ["s63", "s64", "s65", "s66"]
 
         integral = {}
         for key in keys:
@@ -138,6 +144,23 @@ class NekChannelFlow(Postcipe):
             self.nutotdwdy = integral["s52"]
             self.nutotdwdz = integral["s53"]
             self.nutot = integral["s54"]
+
+        if heat:
+            self.t = integral["s55"]
+            self.tt = integral["s56"] - self.t*self.t
+            self.tu = integral["s57"]
+            self.tv = integral["s58"]
+            self.tw = integral["s59"]
+            self.dtdx = integral["s60"]
+            self.dtdy = integral["s61"]
+            self.dtdz = integral["s62"]
+
+        if heat and nutstats:
+            self.xitotdtdx = integral["s63"]
+            self.xitotdtdy = integral["s64"]
+            self.xitotdtdz = integral["s65"]
+            self.xitot = integral["s66"]
+
 
         self.y = datasets[0].y.data
         self.compute_interpolants()
