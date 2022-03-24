@@ -78,6 +78,8 @@ class NekChannelFlow(Postcipe):
         self.lx1 = lx1
         self.nutstats = nutstats
         self.heat = heat
+        
+        
         datafiles = glob.glob(join(self.case, 'sts' + basename +
                                    '[0-1].f[0-9][0-9][0-9][0-9][0-9]'))
         print("Reading datasets")
@@ -99,7 +101,6 @@ class NekChannelFlow(Postcipe):
         if len(datasets) == 0:
             raise FileExistsError
 
-        # Figure out the time weights
         # NB: datasets may not be in order of time, so we resort the datasets
         filtered_times = np.array(filtered_times)
         kept_times = np.array(kept_times)
@@ -122,23 +123,23 @@ class NekChannelFlow(Postcipe):
             print("No datasets are filtered")
             print("Assuming the first dataset is as long as the second")
             dt = np.insert(dt, 0, dt[0])
-            total_time = kept_times[-1] - kept_times[0] - dt[0]
+            total_time = np.sum(dt)
         else:
             print(str(len(filtered_times)) + " datasets are filtered")
             dt = np.insert(dt, 0, kept_times[0] - filtered_times[-1])
-            total_time = kept_times[-1] - filtered_times[-1]
+            total_time = np.sum(dt)
         
         weights = dt/total_time
 
+        print("Weights", weights)
         print("Total averaging time:", total_time)
         print("Dataset lengths", dt)
         
 
-        ndatasets = len(datasets)
         nx = datasets[0].x.size
         nelx = nx / lx1
 
-        keys = ["s01", "s02", "s03", "s05", "s06", "s07", "s09", "s11"]
+        keys = ["s01", "s02", "s03", "s05", "s06", "s07", "s09", "s10", "s11"]
         if nutstats is True:
             keys += ["s45", "s46", "s47", "s48", "s49", "s50", "s51", "s52",
                      "s53", "s54"]
@@ -153,39 +154,42 @@ class NekChannelFlow(Postcipe):
         for key in keys:
             integral[key] = np.zeros(datasets[0].y.size)
 
+        
         print("Averaging in time")
         for i, d in enumerate(datasets):
             for key in keys:
-                datasets[0][key] += weights[i]*d[key]
+                if i == 0:
+                    datasets[0][key] = weights[i]*d[key]
+                else:
+                    datasets[0][key] += weights[i]*d[key]
 
-        for key in keys:
-            datasets[0][key] /= total_time
-
+        self.data2d = datasets[0]
 
         print("Averaging in space")
         for key in keys:
             offset = 0
-            for e in range(int(nelx)):
+            for _ in range(int(nelx)):
                 ind = np.arange(offset, offset + lx1)
                 a = datasets[0].x[offset]
                 b = datasets[0].x[offset + lx1 - 1]
                 for j in range(d.y.size):
-                    slice = d[key].isel(x=ind, y=j).data[0]
-                    integral[key][j] += gll_int(slice, a, b) / (b - a)
+                    slice = datasets[0][key].isel(x=ind, y=j).data[0]
+                    integral[key][j] += gll_int(slice, a, b)
 
                 offset += lx1
 
         for key in integral:
-            integral[key] /= nelx
+            integral[key] /= float(datasets[0]["x"].max() - datasets[0]["x"].min())
 
         self.u = integral["s01"]
         self.v = integral["s02"]
         self.w = integral["s03"]
         self.uu = integral["s05"] - self.u*self.u
-        self.vv = integral["s06"]
+        self.vv = integral["s06"] - self.v*self.v
         self.ww = integral["s07"] - self.w*self.w
-        self.uv = integral["s09"]
-        self.uw = integral["s11"]
+        self.uv = integral["s09"] - self.u*self.v
+        self.uw = integral["s11"] - self.u*self.w
+        self.vw = integral["s10"] - self.v*self.w
 
         if nutstats:
             self.nutotdudx = integral["s45"]
@@ -242,6 +246,7 @@ class NekChannelFlow(Postcipe):
         ww = []
         uv = []
         uw = []
+        vw = []
         nutotdudy = []
         nutot = []
 
@@ -263,6 +268,8 @@ class NekChannelFlow(Postcipe):
             uv.append(p)
             p = lagrange(self.y[ind], self.uw[ind]).coeffs
             uw.append(p)
+            p = lagrange(self.y[ind], self.vw[ind]).coeffs
+            vw.append(p)
             p = lagrange(self.y[ind], self.nutotdudy[ind]).coeffs
             nutotdudy.append(p)
             p = lagrange(self.y[ind], self.nutot[ind]).coeffs
@@ -277,6 +284,7 @@ class NekChannelFlow(Postcipe):
         self.ww_polys = np.array(ww)
         self.uv_polys = np.array(uv)
         self.uw_polys = np.array(uw)
+        self.vw_polys = np.array(vw)
         self.nutotdudy_polys = np.array(nutotdudy)
 #        self.nutot_polys = np.array(nutot)
 
@@ -298,6 +306,7 @@ class NekChannelFlow(Postcipe):
 #        f.create_dataset("k", data=self.k)
         f.create_dataset("uv", data=self.uv)
         f.create_dataset("uw", data=self.uw)
+        f.create_dataset("vw", data=self.vw)
 #        f.create_dataset("nut", data=self.nut)
         f.create_dataset("yplus",data=self.yplus)
 
@@ -341,5 +350,6 @@ class NekChannelFlow(Postcipe):
         f.create_dataset("ww_polys", data=self.ww_polys)
         f.create_dataset("uv_polys", data=self.uv_polys)
         f.create_dataset("uw_polys", data=self.uw_polys)
+        f.create_dataset("vw_polys", data=self.vw_polys)
 
         f.close()
