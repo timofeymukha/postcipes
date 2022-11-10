@@ -69,7 +69,7 @@ def lagrange_interpolate(y, coeffs, lx1, ppelem=None):
 class NekChannelFlow(Postcipe):
 
     def __init__(self, path, basename, starttime=0, lx1=8, nu=None,
-                 nutstats=False, heat=False):
+                 nutstats=False, heat=False, old=False):
         Postcipe.__init__(self)
 
         self.case = path
@@ -78,6 +78,7 @@ class NekChannelFlow(Postcipe):
         self.lx1 = lx1
         self.nutstats = nutstats
         self.heat = heat
+        self.old = old
         
         
         datafiles = glob.glob(join(self.case, 'sts' + basename +
@@ -142,7 +143,9 @@ class NekChannelFlow(Postcipe):
         keys = ["s01", "s02", "s03", "s05", "s06", "s07", "s09", "s10", "s11"]
         if nutstats is True:
             keys += ["s45", "s46", "s47", "s48", "s49", "s50", "s51", "s52",
-                     "s53", "s54"]
+                         "s53", "s54"]
+            if not self.old:
+                keys += ["s67", "s68", "s69"]
 
         if heat is True:
             keys += ["s55", "s56", "s57", "s58", "s59", "s60", "s61", "s62"]
@@ -202,6 +205,10 @@ class NekChannelFlow(Postcipe):
             self.nutotdwdy = integral["s52"]
             self.nutotdwdz = integral["s53"]
             self.nutot = integral["s54"]
+            if not self.old: 
+                self.taux = integral["s67"]
+                self.tauy = integral["s68"]
+                self.tauz = integral["s69"]
 
         if heat:
             self.t = integral["s55"]
@@ -296,6 +303,7 @@ class NekChannelFlow(Postcipe):
         f.attrs["utau"] = self.utau
         f.attrs["retau"] = self.retau
 
+
         f.create_dataset("y", data=self.y)
         f.create_dataset("u", data=self.u)
         f.create_dataset("v", data=self.v)
@@ -311,6 +319,8 @@ class NekChannelFlow(Postcipe):
         f.create_dataset("yplus",data=self.yplus)
 
         if self.nutstats:
+            if not self.old:
+                f.attrs["tau"] = np.sqrt(self.taux[0]**2 + self.tauz[0]**2)
             f.create_dataset("nutotdudx", data=self.nutotdudx)
             f.create_dataset("nutotdudy", data=self.nutotdudy)
             f.create_dataset("nutotdudz", data=self. nutotdudz)
