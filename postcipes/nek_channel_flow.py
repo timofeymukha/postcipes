@@ -254,8 +254,9 @@ class NekChannelFlow(Postcipe):
         uv = []
         uw = []
         vw = []
-        nutotdudy = []
-        nutot = []
+        if self.nutstats:
+            nutotdudy = []
+            nutot = []
 
         for _ in range(nely):
             ind = np.arange(offset, offset + lx1)
@@ -277,10 +278,11 @@ class NekChannelFlow(Postcipe):
             uw.append(p)
             p = lagrange(self.y[ind], self.vw[ind]).coeffs
             vw.append(p)
-            p = lagrange(self.y[ind], self.nutotdudy[ind]).coeffs
-            nutotdudy.append(p)
-            p = lagrange(self.y[ind], self.nutot[ind]).coeffs
-            nutot.append(p)
+            if self.nutstats:
+                p = lagrange(self.y[ind], self.nutotdudy[ind]).coeffs
+                nutotdudy.append(p)
+                p = lagrange(self.y[ind], self.nutot[ind]).coeffs
+                nutot.append(p)
             offset += lx1
 
         self.u_polys = np.array(u)
@@ -292,7 +294,8 @@ class NekChannelFlow(Postcipe):
         self.uv_polys = np.array(uv)
         self.uw_polys = np.array(uw)
         self.vw_polys = np.array(vw)
-        self.nutotdudy_polys = np.array(nutotdudy)
+        if self.nutstats:
+            self.nutotdudy_polys = np.array(nutotdudy)
 #        self.nutot_polys = np.array(nutot)
 
     def save(self, name):
