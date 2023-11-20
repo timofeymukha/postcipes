@@ -19,7 +19,8 @@ __all__ = ["ChannelFlow"]
 
 class ChannelFlow(Postcipe):
 
-    def __init__(self, path=None, nu=None, time=None, wallModel=False, kBudget=False, readH=False, initEmpty=False):
+    def __init__(self, path=None, nu=None, time=None, wallModel=False, kBudget=False, readH=False, initEmpty=False,
+                 heat=False):
         Postcipe.__init__(self)
         if initEmpty:
             return
@@ -56,6 +57,12 @@ class ChannelFlow(Postcipe):
             self.kBalance += self.kTurbulentTransport
             self.kBalance += self.kDissipation
 
+        if heat:
+            self.t = np.genfromtxt(join(self.readPath, "TMean.xy"))[:, 1]
+            self.tt = np.genfromtxt(join(self.readPath, "TPrime2Mean.xy"))[:, 1]
+            self.tu = np.genfromtxt(join(self.readPath, "TUMean_X.xy"))[:, 1] - self.t*self.u
+            self.tv = np.genfromtxt(join(self.readPath, "TUMean_Y.xy"))[:, 1] - self.t*self.v
+            self.tw = np.genfromtxt(join(self.readPath, "TUMean_Z.xy"))[:, 1] - self.t*self.w
 
         self.tau = 0
         if wallModel:
