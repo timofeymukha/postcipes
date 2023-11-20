@@ -11,7 +11,7 @@ from .unstructured_channel_flow import UnstructuredChannelFlow
 from .acs import ACS
 from .nek_channel_flow import NekChannelFlow, gll, lagrange_interpolate
 from .nek_flat_plate import NekFlatPlate
-from .nek_fld_reader import NekInterpolatedData
+from .nek_new_fld_reader import NekInterpolatedData
 from .periodic_hill import PeriodicHill
 from .abl import ABL
 
